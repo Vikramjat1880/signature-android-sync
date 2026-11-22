@@ -12,8 +12,8 @@ import java.util.regex.Pattern
 
 object SupabaseSyncManager {
 
-    private const val SUPABASE_URL = "https://YOUR_PROJECT_ID.supabase.co"
-    private const val SUPABASE_KEY = "YOUR_SUPABASE_ANON_KEY"
+    private const val SUPABASE_URL = "https://vyjewxrdcchhurtvbjms.supabase.co"
+    private const val SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ5amV3eHJkY2NiaHVydHZiam1zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUzNzY3MTIsImV4cCI6MjExMDk1MjcxMn0.fFNl0nerPX3RxI9uti9pToQhBlH5ZDeBASOTpy7gCro"
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)

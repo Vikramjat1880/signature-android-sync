@@ -1,113 +1,91 @@
 package com.signature.listener
 
-import android.Manifest
 import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.net.Uri
-import android.os.Build
-import android.os.Bundle
-import android.os.PowerManager
-import android.provider.Settings
-import android.widget.Button
-import android.widget.EditText
-import android.widget.TextView
-import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
+import android.util.Log
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
+import java.util.concurrent.TimeUnit
+import java.util.regex.Pattern
 
-class MainActivity : AppCompatActivity() {
+object SupabaseSyncManager {
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+    private const val SUPABASE_URL = "https://YOUR_PROJECT_ID.supabase.co"
+    private const val SUPABASE_KEY = "YOUR_SUPABASE_ANON_KEY"
 
-        val etBranch = findViewById<EditText>(R.id.etBranchCode)
-        val etDevice = findViewById<EditText>(R.id.etDeviceCode)
-        val etGroup1 = findViewById<EditText>(R.id.etWaGroup1)
-        val etGroup2 = findViewById<EditText>(R.id.etWaGroup2)
-        val tvStatus = findViewById<TextView>(R.id.tvStatus)
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .writeTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .build()
 
-        val prefs = getSharedPreferences("SignatureConfig", Context.MODE_PRIVATE)
-        etBranch.setText(prefs.getString("branch_code", "BR01"))
-        etDevice.setText(prefs.getString("device_code", "DEV01"))
-        etGroup1.setText(prefs.getString("wa_group_1", ""))
-        etGroup2.setText(prefs.getString("wa_group_2", ""))
-
-        requestRuntimePermissions()
-
-        findViewById<Button>(R.id.btnSaveStart).setOnClickListener {
-            val branch = etBranch.text.toString().trim().ifEmpty { "BR01" }
-            val device = etDevice.text.toString().trim().ifEmpty { "DEV01" }
-            val g1 = etGroup1.text.toString().trim()
-            val g2 = etGroup2.text.toString().trim()
-
-            prefs.edit()
-                .putString("branch_code", branch)
-                .putString("device_code", device)
-                .putString("wa_group_1", g1)
-                .putString("wa_group_2", g2)
-                .apply()
-
-            val serviceIntent = Intent(this, SyncForegroundService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(serviceIntent)
-            } else {
-                startService(serviceIntent)
-            }
-
-            tvStatus.text = "Status: 24/7 Active Sync ($branch / $device)"
-            Toast.makeText(this, "Config Saved & 24/7 Listener Started!", Toast.LENGTH_SHORT).show()
-        }
-
-        findViewById<Button>(R.id.btnPermNotif).setOnClickListener {
-            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-        }
-
-        findViewById<Button>(R.id.btnPermAccess).setOnClickListener {
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-        }
-
-        findViewById<Button>(R.id.btnPermBattery).setOnClickListener {
-            try {
-                val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-                if (!pm.isIgnoringBatteryOptimizations(packageName)) {
-                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                        data = Uri.parse("package:$packageName")
-                    }
-                    startActivity(intent)
-                } else {
-                    Toast.makeText(this, "Battery optimization already disabled!", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-            }
-        }
-
-        findViewById<Button>(R.id.btnTestPing).setOnClickListener {
-            val sampleMsg = "Rs. 500.00 credited to A/c XX1234 via UPI Ref No 612345678901 - TEST PING"
-            SupabaseSyncManager.processAndSync(this, "TEST_PING", "SignatureApp", sampleMsg)
-            Toast.makeText(this, "Test UTR Ping Sent! Check Signature Portal.", Toast.LENGTH_LONG).show()
-        }
+    fun getAllowedGroups(context: Context): List<String> {
+        val prefs = context.getSharedPreferences("SignatureConfig", Context.MODE_PRIVATE)
+        val g1 = prefs.getString("wa_group_1", "")?.trim() ?: ""
+        val g2 = prefs.getString("wa_group_2", "")?.trim() ?: ""
+        return listOf(g1, g2).filter { it.isNotEmpty() }
     }
 
-    private fun requestRuntimePermissions() {
-        val perms = mutableListOf(
-            Manifest.permission.RECEIVE_SMS,
-            Manifest.permission.READ_SMS
+    fun processAndSync(context: Context, sourceType: String, sender: String, rawText: String) {
+        val utr = extractUtr(rawText) ?: return
+        val amount = extractAmount(rawText)
+
+        val prefs = context.getSharedPreferences("SignatureConfig", Context.MODE_PRIVATE)
+        val branchCode = prefs.getString("branch_code", "BR01") ?: "BR01"
+        val deviceCode = prefs.getString("device_code", "DEV01") ?: "DEV01"
+
+        val payload = JSONObject().apply {
+            put("utr_number", utr)
+            put("amount", amount)
+            put("source_type", sourceType)
+            put("sender", sender)
+            put("raw_message", rawText.take(500))
+            put("branch_code", branchCode)
+            put("device_code", deviceCode)
+        }
+
+        Thread {
+            try {
+                val body = payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+                val request = Request.Builder()
+                    .url("$SUPABASE_URL/rest/v1/utr_logs")
+                    .addHeader("apikey", SUPABASE_KEY)
+                    .addHeader("Authorization", "Bearer $SUPABASE_KEY")
+                    .addHeader("Content-Type", "application/json")
+                    .addHeader("Prefer", "resolution=merge-duplicates")
+                    .post(body)
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    Log.d("SupabaseSync", "UTR $utr synced: HTTP ${response.code}")
+                }
+            } catch (e: Exception) {
+                Log.e("SupabaseSync", "Sync failed for UTR $utr: ${e.message}")
+            }
+        }.start()
+    }
+
+    private fun extractUtr(text: String): String? {
+        val patterns = listOf(
+            Pattern.compile("(?:UTR|Ref(?:\\s*No)?|UPI\\s*Ref|RRN|Txn\\s*ID)[:\\s#-]*([0-9]{12})", Pattern.CASE_INSENSITIVE),
+            Pattern.compile("\\b([0-9]{12})\\b")
         )
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            perms.add(Manifest.permission.READ_MEDIA_IMAGES)
-            perms.add(Manifest.permission.POST_NOTIFICATIONS)
-        } else {
-            perms.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+        for (p in patterns) {
+            val m = p.matcher(text)
+            if (m.find()) return m.group(1)
         }
-        val missing = perms.filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        return null
+    }
+
+    private fun extractAmount(text: String): Double {
+        val p = Pattern.compile("(?:Rs\\.?|INR|₹)\\s*([0-9,]+(?:\\.[0-9]{1,2})?)", Pattern.CASE_INSENSITIVE)
+        val m = p.matcher(text)
+        if (m.find()) {
+            val numStr = m.group(1)?.replace(",", "") ?: "0"
+            return numStr.toDoubleOrNull() ?: 0.0
         }
-        if (missing.isNotEmpty()) {
-            ActivityCompat.requestPermissions(this, missing.toTypedArray(), 101)
-        }
+        return 0.0
     }
 }

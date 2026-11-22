@@ -12,7 +12,6 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-      - uses: android-actions/setup-android@v3
       - run: |
           gradle wrapper --gradle-version 8.5
           chmod +x gradlew

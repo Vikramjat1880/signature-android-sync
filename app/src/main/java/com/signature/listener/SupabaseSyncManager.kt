@@ -1,7 +1,10 @@
 package com.signature.listener
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import android.widget.Toast
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -64,7 +67,7 @@ object SupabaseSyncManager {
             try {
                 val body = payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
                 val request = Request.Builder()
-                    .url("$SUPABASE_URL/rest/v1/utr_logs")
+                    .url("$SUPABASE_URL/rest/v1/utr_logs?on_conflict=utr_number")
                     .addHeader("apikey", SUPABASE_KEY)
                     .addHeader("Authorization", "Bearer $SUPABASE_KEY")
                     .addHeader("Content-Type", "application/json")
@@ -73,10 +76,22 @@ object SupabaseSyncManager {
                     .build()
 
                 client.newCall(request).execute().use { response ->
-                    Log.d("SupabaseSync", "UTR $utr synced: HTTP ${response.code}")
+                    val code = response.code
+                    val respStr = response.body?.string() ?: ""
+                    Log.d("SupabaseSync", "UTR $utr synced: HTTP $code | $respStr")
+                    Handler(Looper.getMainLooper()).post {
+                        if (code in 200..299) {
+                            Toast.makeText(context, "✅ UTR $utr Saved! (HTTP $code)", Toast.LENGTH_LONG).show()
+                        } else {
+                            Toast.makeText(context, "❌ Error HTTP $code: ${respStr.take(80)}", Toast.LENGTH_LONG).show()
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 Log.e("SupabaseSync", "Sync failed for UTR $utr: ${e.message}")
+                Handler(Looper.getMainLooper()).post {
+                    Toast.makeText(context, "❌ Network Fail: ${e.message?.take(60)}", Toast.LENGTH_LONG).show()
+                }
             }
         }.start()
     }

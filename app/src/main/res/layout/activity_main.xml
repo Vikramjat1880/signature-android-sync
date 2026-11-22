@@ -2,7 +2,6 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#0F172A"
     android:padding="16dp">
 
     <LinearLayout
@@ -10,45 +9,73 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:text="Signature v2.0 ( by vickyy )" android:textColor="#38BDF8" android:textSize="22sp" android:textStyle="bold" />
+        <TextView
+            android:id="@+id/tvStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Status: Ready to Configure"
+            android:textStyle="bold"
+            android:textSize="16sp"
+            android:paddingBottom="12dp" />
 
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="16dp"
-            android:text="24/7 Bank SMS, UPI &amp; WhatsApp Auto-Audit Listener" android:textColor="#94A3B8" android:textSize="13sp" />
+        <EditText
+            android:id="@+id/etBranchCode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Branch Code (e.g. BR01)" />
 
-        <EditText android:id="@+id/etBranchCode" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:background="#1E293B" android:hint="Branch Code (e.g. BR01)" android:padding="12dp" android:textColor="#FFFFFF" android:textColorHint="#64748B" />
+        <EditText
+            android:id="@+id/etDeviceCode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Device Code (e.g. DEV01)" />
 
-        <EditText android:id="@+id/etDeviceCode" android:layout_width="match_parent"
-            android:layout_height="wrap_content" android:layout_marginTop="10dp"
-            android:background="#1E293B" android:hint="Unique Device Code (e.g. DEV01)" android:padding="12dp" android:textColor="#FFFFFF" android:textColorHint="#64748B" />
+        <EditText
+            android:id="@+id/etWaGroup1"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="WhatsApp Group 1 Exact Name" />
 
-        <EditText android:id="@+id/etGroup1" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp"
-            android:background="#1E293B" android:hint="WhatsApp Group 1 Name (Withdrawal)" android:padding="12dp" android:textColor="#FFFFFF" android:textColorHint="#64748B" />
+        <EditText
+            android:id="@+id/etWaGroup2"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="WhatsApp Group 2 Exact Name" />
 
-        <EditText android:id="@+id/etGroup2" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp"
-            android:background="#1E293B" android:hint="WhatsApp Group 2 Name (Kharcha / Bahar)" android:padding="12dp" android:textColor="#FFFFFF" android:textColorHint="#64748B" />
+        <Button
+            android:id="@+id/btnSaveStart"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Save Config &amp; Start 24/7 Sync"
+            android:layout_marginTop="12dp" />
 
-        <Button android:id="@+id/btnSaveStart" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp"
-            android:backgroundTint="#0284C7" android:text="Save Config &amp; Start 24/7 Sync" android:textColor="#FFFFFF" android:textStyle="bold" />
+        <Button
+            android:id="@+id/btnPermNotif"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="1. Enable Notification Access"
+            android:layout_marginTop="8dp" />
 
-        <Button android:id="@+id/btnNotifAccess" android:layout_width="match_parent"
-            android:layout_height="wrap_content" android:layout_marginTop="8dp"
-            android:backgroundTint="#334155" android:text="1. Enable Notification Access (Required)" android:textColor="#FFFFFF" />
+        <Button
+            android:id="@+id/btnPermAccess"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="2. Enable Screen Reader"
+            android:layout_marginTop="8dp" />
 
-        <Button android:id="@+id/btnAccAccess" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp"
-            android:backgroundTint="#334155" android:text="2. Enable Screen Reader (GPay Business)" android:textColor="#FFFFFF" />
+        <Button
+            android:id="@+id/btnPermBattery"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="3. Disable Battery Saver"
+            android:layout_marginTop="8dp" />
 
-        <Button android:id="@+id/btnBattery" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp"
-            android:backgroundTint="#334155" android:text="3. Disable Battery Saver (Immortal Mode)" android:textColor="#FFFFFF" />
+        <Button
+            android:id="@+id/btnTestPing"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Send Test UTR Ping to Portal"
+            android:layout_marginTop="12dp" />
 
-        <Button android:id="@+id/btnTestPing" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp"
-            android:backgroundTint="#16A34A" android:text="Send Test UTR Ping to Portal" android:textColor="#FFFFFF" android:textStyle="bold" />
-
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp"
-            android:text="Live Activity Feed:" android:textColor="#38BDF8" android:textStyle="bold" />
-
-        <TextView android:id="@+id/tvLiveLogs" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp"
-            android:background="#020617" android:padding="10dp" android:text="Waiting..." android:textColor="#E2E8F0" android:textSize="12sp" />
     </LinearLayout>
 </ScrollView>

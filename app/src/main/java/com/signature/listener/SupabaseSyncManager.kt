@@ -95,6 +95,11 @@ object SupabaseSyncManager {
 
     fun extractUTR(text: String): String? = extractUtr(text)
 
+    fun extractUtrs(text: String): List<String> {
+        val u = extractUtr(text)
+        return if (u != null) listOf(u) else emptyList()
+    }
+
     fun extractAmount(text: String): String {
         val p = Pattern.compile("(?:Rs\\.?|INR|₹)\\s*([0-9,]+(?:\\.[0-9]{1,2})?)", Pattern.CASE_INSENSITIVE)
         val m = p.matcher(text)

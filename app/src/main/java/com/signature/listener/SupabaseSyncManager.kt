@@ -31,7 +31,19 @@ object SupabaseSyncManager {
     fun processAndSync(context: Context, sourceType: String, sender: String, rawText: String) {
         val utr = extractUtr(rawText) ?: return
         val amount = extractAmount(rawText)
+        val direction = detectDirection(rawText)
+        pushTransaction(context, utr, amount, direction, sourceType, sender, rawText)
+    }
 
+    fun pushTransaction(
+        context: Context,
+        utr: String,
+        amount: Double,
+        direction: String = "CREDIT",
+        sourceType: String = "SMS",
+        sender: String = "Bank",
+        rawText: String = ""
+    ) {
         val prefs = context.getSharedPreferences("SignatureConfig", Context.MODE_PRIVATE)
         val branchCode = prefs.getString("branch_code", "BR01") ?: "BR01"
         val deviceCode = prefs.getString("device_code", "DEV01") ?: "DEV01"
@@ -39,6 +51,7 @@ object SupabaseSyncManager {
         val payload = JSONObject().apply {
             put("utr_number", utr)
             put("amount", amount)
+            put("direction", direction)
             put("source_type", sourceType)
             put("sender", sender)
             put("raw_message", rawText.take(500))
@@ -67,7 +80,7 @@ object SupabaseSyncManager {
         }.start()
     }
 
-    private fun extractUtr(text: String): String? {
+    fun extractUtr(text: String): String? {
         val patterns = listOf(
             Pattern.compile("(?:UTR|Ref(?:\\s*No)?|UPI\\s*Ref|RRN|Txn\\s*ID)[:\\s#-]*([0-9]{12})", Pattern.CASE_INSENSITIVE),
             Pattern.compile("\\b([0-9]{12})\\b")
@@ -79,7 +92,7 @@ object SupabaseSyncManager {
         return null
     }
 
-    private fun extractAmount(text: String): Double {
+    fun extractAmount(text: String): Double {
         val p = Pattern.compile("(?:Rs\\.?|INR|₹)\\s*([0-9,]+(?:\\.[0-9]{1,2})?)", Pattern.CASE_INSENSITIVE)
         val m = p.matcher(text)
         if (m.find()) {
@@ -87,5 +100,14 @@ object SupabaseSyncManager {
             return numStr.toDoubleOrNull() ?: 0.0
         }
         return 0.0
+    }
+
+    fun detectDirection(text: String): String {
+        val lower = text.lowercase()
+        return if (lower.contains("debited") || lower.contains("sent") || lower.contains("paid to") || lower.contains("withdrawn")) {
+            "DEBIT"
+        } else {
+            "CREDIT"
+        }
     }
 }

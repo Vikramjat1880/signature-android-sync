@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Signature v2.0 Sync</string>
+    <string name="acc_desc">Reads UPI/Bank UTR numbers on screen automatically for Signature v2.0 Audit Portal.</string>
+</resources>

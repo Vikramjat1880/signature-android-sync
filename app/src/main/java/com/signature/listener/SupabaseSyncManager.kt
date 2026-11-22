@@ -1,162 +1,113 @@
 package com.signature.listener
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
-import android.os.BatteryManager
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONArray
-import org.json.JSONObject
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import java.util.TimeZone
-import java.util.concurrent.TimeUnit
-import java.util.regex.Pattern
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
+import android.widget.Button
+import android.widget.EditText
+import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 
-object SupabaseSyncManager {
-    private const val SUPABASE_URL = "https://gutxudaauqaegfhqpdlt.supabase.co"
-    private const val SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd1dHh1ZGFhdXFhZWdmaHFwZGx0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUzNjc1NTIsImV4cCI6MjExMDk0MzU1Mn0.M-R-dQFPBTVEfRBDBuZNBNmWUT4tKsgu3FWueHjHxYE"
+class MainActivity : AppCompatActivity() {
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(12, TimeUnit.SECONDS)
-        .readTimeout(12, TimeUnit.SECONDS)
-        .build()
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
 
-    private val recentCache = LinkedHashSet<String>()
+        val etBranch = findViewById<EditText>(R.id.etBranchCode)
+        val etDevice = findViewById<EditText>(R.id.etDeviceCode)
+        val etGroup1 = findViewById<EditText>(R.id.etWaGroup1)
+        val etGroup2 = findViewById<EditText>(R.id.etWaGroup2)
+        val tvStatus = findViewById<TextView>(R.id.tvStatus)
 
-    fun getPrefs(ctx: Context) = ctx.getSharedPreferences("SignaturePrefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("SignatureConfig", Context.MODE_PRIVATE)
+        etBranch.setText(prefs.getString("branch_code", "BR01"))
+        etDevice.setText(prefs.getString("device_code", "DEV01"))
+        etGroup1.setText(prefs.getString("wa_group_1", ""))
+        etGroup2.setText(prefs.getString("wa_group_2", ""))
 
-    fun extractUtrs(text: String): List<String> {
-        val list = mutableListOf<String>()
-        val m = Pattern.compile("\\b[0-9]{12}\\b").matcher(text)
-        while (m.find()) {
-            val u = m.group()
-            if (u.toSet().size > 2 && !list.contains(u)) list.add(u)
+        requestRuntimePermissions()
+
+        findViewById<Button>(R.id.btnSaveStart).setOnClickListener {
+            val branch = etBranch.text.toString().trim().ifEmpty { "BR01" }
+            val device = etDevice.text.toString().trim().ifEmpty { "DEV01" }
+            val g1 = etGroup1.text.toString().trim()
+            val g2 = etGroup2.text.toString().trim()
+
+            prefs.edit()
+                .putString("branch_code", branch)
+                .putString("device_code", device)
+                .putString("wa_group_1", g1)
+                .putString("wa_group_2", g2)
+                .apply()
+
+            val serviceIntent = Intent(this, SyncForegroundService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
+            } else {
+                startService(serviceIntent)
+            }
+
+            tvStatus.text = "Status: 24/7 Active Sync ($branch / $device)"
+            Toast.makeText(this, "Config Saved & 24/7 Listener Started!", Toast.LENGTH_SHORT).show()
         }
-        return list
-    }
 
-    fun extractAmount(text: String): Double {
-        val m = Pattern.compile("(?:rs\\.?|inr|₹)\\s*([0-9,]+(?:\\.[0-9]{1,2})?)", Pattern.CASE_INSENSITIVE).matcher(text)
-        if (m.find()) return m.group(1)?.replace(",", "")?.toDoubleOrNull() ?: 0.0
-        val m2 = Pattern.compile("\\b([0-9]{1,3}(?:,[0-9]{3})*(?:\\.[0-9]{1,2})?)\\b").matcher(text)
-        while (m2.find()) {
-            val raw = m2.group(1)?.replace(",", "") ?: ""
-            if (raw.length in 1..8) {
-                val v = raw.toDoubleOrNull() ?: 0.0
-                if (v > 0) return v
+        findViewById<Button>(R.id.btnPermNotif).setOnClickListener {
+            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+        }
+
+        findViewById<Button>(R.id.btnPermAccess).setOnClickListener {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
+
+        findViewById<Button>(R.id.btnPermBattery).setOnClickListener {
+            try {
+                val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                    startActivity(intent)
+                } else {
+                    Toast.makeText(this, "Battery optimization already disabled!", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
             }
         }
-        return 0.0
-    }
 
-    fun detectDirection(text: String): String {
-        val u = text.uppercase(Locale.ROOT)
-        if (listOf("DEBITED", "SENT", "PAID TO", "WITHDRAWN", "DR ", "TRANSFER TO", "OUTFLOW").any { u.contains(it) }) return "PHONE_BANK_DR"
-        return "PHONE_BANK_CR"
-    }
-
-    fun pushTransaction(ctx: Context, channel: String, utr: String, amount: Double, sender: String, narration: String) {
-        val prefs = getPrefs(ctx)
-        val branch = prefs.getString("branch_code", "BR01")?.trim()?.uppercase(Locale.ROOT) ?: "BR01"
-        val device = prefs.getString("device_code", "DEV01")?.trim()?.uppercase(Locale.ROOT) ?: "DEV01"
-
-        val dedupKey = "$channel|$utr"
-        synchronized(recentCache) {
-            if (recentCache.contains(dedupKey)) return
-            recentCache.add(dedupKey)
-            if (recentCache.size > 500) {
-                val it = recentCache.iterator()
-                if (it.hasNext()) { it.next(); it.remove() }
-            }
-        }
-
-        val json = JSONObject().apply {
-            put("branch_code", branch)
-            put("source_channel", channel)
-            put("device_code", device)
-            put("utr", utr)
-            put("amount", amount)
-            put("sender_or_user", sender.take(80))
-            put("raw_narration", narration.take(240))
-        }
-
-        saveLogLocal(ctx, "[$channel] UTR: $utr | ₹$amount | $sender")
-        enqueueAndFlush(ctx, json)
-    }
-
-    private fun enqueueAndFlush(ctx: Context, newObj: JSONObject?) {
-        CoroutineScope(Dispatchers.IO).launch {
-            val prefs = getPrefs(ctx)
-            val arr = try { JSONArray(prefs.getString("offline_queue", "[]")) } catch (e: Exception) { JSONArray() }
-            if (newObj != null) arr.put(newObj)
-            val remaining = JSONArray()
-            for (i in 0 until arr.length()) {
-                val item = arr.getJSONObject(i)
-                if (!postToSupabase("live_transactions", item.toString())) remaining.put(item)
-            }
-            prefs.edit().putString("offline_queue", remaining.toString()).apply()
+        findViewById<Button>(R.id.btnTestPing).setOnClickListener {
+            val sampleMsg = "Rs. 500.00 credited to A/c XX1234 via UPI Ref No 612345678901 - TEST PING"
+            SupabaseSyncManager.processAndSync(this, "TEST_PING", "SignatureApp", sampleMsg)
+            Toast.makeText(this, "Test UTR Ping Sent! Check Signature Portal.", Toast.LENGTH_LONG).show()
         }
     }
 
-    fun flushQueueOnly(ctx: Context) { enqueueAndFlush(ctx, null) }
-
-    fun sendHeartbeat(ctx: Context) {
-        CoroutineScope(Dispatchers.IO).launch {
-
-            val prefs = getPrefs(ctx)
-            val device = prefs.getString("device_code", "DEV01")?.trim()?.uppercase(Locale.ROOT) ?: "DEV01"
-            val bat = getBatteryPercentage(ctx)
-            val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
-            val payload = JSONObject().apply {
-                put("last_seen", sdf.format(Date()))
-                put("battery_level", bat)
-            }
-            patchSupabase("devices", "device_code=eq.$device", payload.toString())
+    private fun requestRuntimePermissions() {
+        val perms = mutableListOf(
+            Manifest.permission.RECEIVE_SMS,
+            Manifest.permission.READ_SMS
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            perms.add(Manifest.permission.READ_MEDIA_IMAGES)
+            perms.add(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            perms.add(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
-    }
-
-    private fun getBatteryPercentage(ctx: Context): Int {
-        return try {
-            val i = ctx.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-            val level = i?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: 100
-            val scale = i?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: 100
-            if (level >= 0 && scale > 0) (level * 100) / scale else 100
-        } catch (e: Exception) { 100 }
-    }
-
-    private fun postToSupabase(table: String, bodyStr: String): Boolean {
-        return try {
-            val req = Request.Builder().url("$SUPABASE_URL/rest/v1/$table")
-                .addHeader("apikey", SUPABASE_KEY).addHeader("Authorization", "Bearer $SUPABASE_KEY")
-                .addHeader("Content-Type", "application/json").addHeader("Prefer", "return=minimal")
-                .post(bodyStr.toRequestBody("application/json".toMediaType())).build()
-            client.newCall(req).execute().use { it.isSuccessful }
-        } catch (e: Exception) { false }
-    }
-
-    private fun patchSupabase(table: String, query: String, bodyStr: String): Boolean {
-        return try {
-            val req = Request.Builder().url("$SUPABASE_URL/rest/v1/$table?$query")
-                .addHeader("apikey", SUPABASE_KEY).addHeader("Authorization", "Bearer $UPABASE_KEY")
-                .addHeader("Content-Type", "application/json")
-                .patch(bodyStr.toRequestBody("application/json".toMediaType())).build()
-            client.newCall(req).execute().use { it.isSuccessful }
-        } catch (e: Exception) { false }
-    }
-
-    fun saveLogLocal(ctx: Context, line: String) {
-        val prefs = getPrefs(ctx)
-        val ts = SimpleDateFormat("hh:mm:ss a", Locale.getDefault()).format(Date())
-        val old = prefs.getString("live_logs", "") ?: ""
-        val updated = ("$ts → $line\n" + old).take(3500)
-        prefs.edit().putString("live_logs", updated).apply()
+        val missing = perms.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isNotEmpty()) {
+            ActivityCompat.requestPermissions(this, missing.toTypedArray(), 101)
+        }
     }
 }
